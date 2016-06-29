@@ -44,7 +44,7 @@ data Event a
     | Heartbeat
     deriving (Eq, Show)
 
-data Reply
+data Message a
     = AppendLogRPCReply
         { term :: Term
         , success :: Bool
@@ -53,4 +53,8 @@ data Reply
         { term :: Term
         , voteGranted :: Bool
         }
+    | RequestVoteMsg RequestVoteRPC
+    | AppendLogMsg (AppendLogRPC a)
     deriving (Eq, Show)
+
+type Reply a = (NodeId, Message a)

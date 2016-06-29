@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards, ScopedTypeVariables, DuplicateRecordFields #-}
 module Raft where
 
 import Control.Concurrent (forkIO)
@@ -14,20 +14,20 @@ import Raft.Types
 import Util (when, index)
 
 
-raftFSM :: State -> Event a -> ClientData a -> (Reply, State, ClientData a)
-raftFSM Leader ElectionTimeout _ = error "ElectionTimeout in Leader state"
-raftFSM _ ElectionTimeout dat = undefined -- TODO
+raftFSM :: State -> Event a -> NodeId -> ClientData a -> (Reply a, State, ClientData a)
+raftFSM Leader ElectionTimeout _ _ = error "ElectionTimeout in Leader state"
+raftFSM _ ElectionTimeout _ dat@ClientData{..} = ((0, undefined), Candidate, dat { currentTerm = currentTerm+1 }) -- TODO initialize new election
 
-raftFSM Follower  Heartbeat _ = error "Heartbeat in Follower state"
-raftFSM Candidate Heartbeat _ = error "Heartbeat in Candidate state"
-raftFSM Leader    Heartbeat dat = undefined
+raftFSM Follower  Heartbeat _ _ = error "Heartbeat in Follower state"
+raftFSM Candidate Heartbeat _ _ = error "Heartbeat in Candidate state"
+raftFSM Leader    Heartbeat _ dat = undefined
 
-raftFSM state (AppendLog rpc) dat = appendLog state rpc dat
-raftFSM state (RequestVote rpc) dat = vote state rpc dat
+raftFSM state (AppendLog rpc) from dat = appendLog state rpc from dat
+raftFSM state (RequestVote rpc) from dat = vote state rpc from dat
 
 
-appendLog :: State -> AppendLogRPC a -> ClientData a -> (Reply, State, ClientData a)
-appendLog state AppendLogRPC{..} dat@ClientData{..} =
+appendLog :: State -> AppendLogRPC a -> NodeId -> ClientData a -> (Reply a, State, ClientData a)
+appendLog state AppendLogRPC{..} from dat@ClientData{..} =
     maybe failure id $
         when (term >= currentTerm) $ do
             checkPrevLog prevLogTerm prevLogIndex log
@@ -37,12 +37,12 @@ appendLog state AppendLogRPC{..} dat@ClientData{..} =
                                 then min leaderCommit $ fromIntegral $ length log'
                                 else commitIndex
                 dat' = dat { Raft.Types.log = log', commitIndex = commitIndex' }
-            return (reply, state', dat')
+            return ((from, reply), state', dat')
 
     where
         actualTerm = max term currentTerm
         state' = if term >= currentTerm then Follower else state
-        failure = (AppendLogRPCReply actualTerm False, state', dat {currentTerm = actualTerm})
+        failure = ((from, AppendLogRPCReply actualTerm False), state', dat {currentTerm = actualTerm})
 
         checkPrevLog :: Term -> Index -> Log a -> Maybe ()
         checkPrevLog prevLogTerm prevLogIndex log = do
@@ -53,8 +53,8 @@ appendLog state AppendLogRPC{..} dat@ClientData{..} =
         addEntriesToLog startIndex entries log = genericTake startIndex log ++ entries
 
 
-vote :: State -> RequestVoteRPC -> ClientData a -> (Reply, State, ClientData a)
-vote state RequestVoteRPC{..} dat@ClientData{..} = maybe failure id $ do
+vote :: State -> RequestVoteRPC -> NodeId -> ClientData a -> (Reply a, State, ClientData a)
+vote state RequestVoteRPC{..} from dat@ClientData{..} = maybe failure id $ do
     when (term >= currentTerm) $ do
         case votedFor of
             Nothing -> do
@@ -69,7 +69,7 @@ vote state RequestVoteRPC{..} dat@ClientData{..} = maybe failure id $ do
         state' = if actualTerm == currentTerm then state else Follower
         grant = RequestVoteRPCReply actualTerm True
         reject = RequestVoteRPCReply actualTerm False
-        result reply dat = (reply, state', dat { currentTerm = actualTerm })
+        result reply dat = ((from, reply), state', dat { currentTerm = actualTerm })
         failure = result reject dat
 
         checkNotALeaderForThisTerm state currentTerm term =
@@ -97,23 +97,23 @@ transition _ _ = return () -- do nothing
 
 
 type EventQueue a = TQueue (NodeId, Event a)
-type CommQueue = TQueue (NodeId, Reply)
+type CommQueue a = TQueue (Reply a)
 type NodeInfo = (Int, Int)--SockAddr, PortNumber)
 type Node = (NodeId, NodeInfo)
 
 initialStateRaftFSM :: (State, ClientData a)
 initialStateRaftFSM = (Follower, ClientData 0 Nothing [] 0 0 [] [])
 
-runRaftFSM :: EventQueue a -> CommQueue -> IO ()
+runRaftFSM :: EventQueue a -> CommQueue a -> IO ()
 runRaftFSM queue commQueue = flip evalStateT initialStateRaftFSM $ forever $ do
     (fromNode, event) <- liftIO $ atomically $ readTQueue queue
     (state, dat) <- get
-    let (reply, state', dat') = raftFSM state event dat
+    let (replyTuple, state', dat') = raftFSM state event fromNode dat
     liftIO $ transition state state'
-    liftIO $ atomically $ writeTQueue commQueue (fromNode, reply)
+    liftIO $ atomically $ writeTQueue commQueue replyTuple
     put (state', dat')
 
-runCommProcess :: EventQueue a -> CommQueue -> Node -> [Node] -> IO ()
+runCommProcess :: EventQueue a -> CommQueue a -> Node -> [Node] -> IO ()
 runCommProcess myNode = undefined
 
 runRaftNode :: Node -> [Node] -> IO ()
