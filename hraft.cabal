@@ -1,0 +1,47 @@
+name:                hraft
+version:             0.1.0.0
+synopsis:            Raft implementation in haskell
+description:         Please see README.md
+homepage:            https://github.com/hator/hraft#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Jan Michalski
+maintainer:          jan.michalski@buzytor.com
+copyright:           2016 Jan Michalski
+category:            Web
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Raft, Raft.Types
+  other-modules:       Util
+  build-depends:       base >= 4.7 && < 5
+                     , containers
+                     , mtl
+                     , stm
+                     , transformers
+  default-language:    Haskell2010
+
+executable hraft-exe
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -Wall -Wextra -fwarn-incomplete-patterns
+  build-depends:       base
+                     , hraft
+  default-language:    Haskell2010
+
+test-suite hraft-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Main.hs
+  build-depends:       base
+                     , hraft
+                     , hspec
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/hator/hraft
