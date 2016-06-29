@@ -1,6 +1,7 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 module RaftSpec (spec) where
 
+import Prelude hiding (log)
 import Test.Hspec
 import Raft
 import Raft.Types
@@ -9,6 +10,33 @@ import Raft.Types (Reply(..))
 spec :: Spec
 spec = do
     let defaultData = ClientData 0 Nothing [] 0 0 [] [] :: ClientData Int
+
+    describe "becomeCandidate" $ do
+        let myNodeId = 1
+            allNodes = 0
+
+        it "works" $ do
+            let dat = defaultData { currentTerm = 3
+                                  , votedFor = Just 2
+                                  , log = [(1, 1), (3, 3)]
+                                  , commitIndex = 1
+                                  , lastApplied = 0
+                                  }
+
+            let ((toNode, reply), state, dat') = becomeCandidate myNodeId dat
+            currentTerm dat' `shouldBe` 4
+            votedFor dat' `shouldBe` Just myNodeId
+            log dat' `shouldBe` log dat
+            commitIndex dat' `shouldBe` commitIndex dat
+            lastApplied dat' `shouldBe` lastApplied dat
+            state `shouldBe` Candidate
+            toNode `shouldBe` allNodes
+            reply `shouldBe` RequestVoteMsg RequestVoteRPC
+                                            { term = 4
+                                            , candidateId = myNodeId
+                                            , lastLogIndex = 2
+                                            , lastLogTerm = 3
+                                            }
 
     describe "appendLog" $ do
         let defaultRpc = AppendLogRPC 0 0 0 0 [] 0

@@ -16,7 +16,7 @@ import Util (when, index)
 
 raftFSM :: State -> Event a -> NodeId -> ClientData a -> (Reply a, State, ClientData a)
 raftFSM Leader ElectionTimeout _ _ = error "ElectionTimeout in Leader state"
-raftFSM _ ElectionTimeout _ dat@ClientData{..} = ((0, undefined), Candidate, dat { currentTerm = currentTerm+1 }) -- TODO initialize new election
+raftFSM _ ElectionTimeout from dat = becomeCandidate from dat
 
 raftFSM Follower  Heartbeat _ _ = error "Heartbeat in Follower state"
 raftFSM Candidate Heartbeat _ _ = error "Heartbeat in Candidate state"
@@ -24,6 +24,24 @@ raftFSM Leader    Heartbeat _ dat = undefined
 
 raftFSM state (AppendLog rpc) from dat = appendLog state rpc from dat
 raftFSM state (RequestVote rpc) from dat = vote state rpc from dat
+
+
+becomeCandidate :: NodeId -> ClientData a -> (Reply a, State, ClientData a)
+becomeCandidate myNodeId dat@ClientData{..} =
+    ( ( 0
+      , RequestVoteMsg RequestVoteRPC
+                        { term = currentTerm + 1
+                        , candidateId = myNodeId
+                        , lastLogIndex = fromIntegral $ logLength
+                        , lastLogTerm = maybe 0 fst $ index log logLength
+                        }
+      )
+    , Candidate
+    , dat { currentTerm = currentTerm+1
+          , votedFor = Just myNodeId
+          }
+    )
+    where logLength = length log
 
 
 appendLog :: State -> AppendLogRPC a -> NodeId -> ClientData a -> (Reply a, State, ClientData a)
