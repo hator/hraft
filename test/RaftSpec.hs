@@ -13,7 +13,6 @@ spec = do
     describe "appendLog" $ do
         let defaultRpc = AppendLogRPC 0 0 0 0 [] 0
             fromNode = 0
-            toNode = 0
 
         it "ignores rpc with lower term" $ do
             let dat = defaultData {currentTerm = 3, Raft.Types.log = [(1, 1), (2, 2)]}
@@ -21,12 +20,15 @@ spec = do
 
             let ((toNode, AppendLogRPCReply 3 False), Follower, dat') = appendLog Follower rpc 0 dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 False), Candidate, dat') = appendLog Candidate rpc 0 dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 False), Leader, dat') = appendLog Leader rpc 0 dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
         it "ignores rpc with invalid prevLog" $ do
             let dat = defaultData {currentTerm = 3, Raft.Types.log = [(1, 1), (1, 2)]}
@@ -34,17 +36,21 @@ spec = do
 
             let ((toNode, AppendLogRPCReply 3 False), Follower, dat') = appendLog Follower rpc fromNode dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 False), Follower, dat') = appendLog Candidate rpc fromNode dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let rpc = (defaultRpc :: AppendLogRPC Int) {term = 3, prevLogTerm = 1, prevLogIndex = 3}
 
             let ((toNode, AppendLogRPCReply 3 False), Follower, dat') = appendLog Follower rpc fromNode dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 False), Follower, dat') = appendLog Candidate rpc fromNode dat
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
         it "appends new entries" $ do
             let dat = defaultData {currentTerm = 3, Raft.Types.log = [(1, 1), (2, 2)]}
@@ -52,10 +58,12 @@ spec = do
 
             let ((toNode, AppendLogRPCReply 3 True), Follower, dat') = appendLog Follower rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 True), state', dat') = appendLog Candidate rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
             state' `shouldBe` Follower
+            toNode `shouldBe` fromNode
 
         it "overwrites conflicting entries" $ do
             let dat = defaultData {currentTerm = 3, Raft.Types.log = [(1, 1), (2, 2), (3, 0)]}
@@ -63,10 +71,12 @@ spec = do
 
             let ((toNode, AppendLogRPCReply 3 True), Follower, dat') = appendLog Follower rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 True), state', dat') = appendLog Candidate rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
             state' `shouldBe` Follower
+            toNode `shouldBe` fromNode
 
         it "sets commitIndex" $ do
             let dat = defaultData {currentTerm = 3, Raft.Types.log = [(1, 1), (2, 2)]}
@@ -75,26 +85,29 @@ spec = do
             let ((toNode, AppendLogRPCReply 3 True), Follower, dat') = appendLog Follower rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
             commitIndex dat' `shouldBe` 2
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 True), state', dat') = appendLog Candidate rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
             state' `shouldBe` Follower
             commitIndex dat' `shouldBe` 2
+            toNode `shouldBe` fromNode
 
             let rpc = (defaultRpc :: AppendLogRPC Int) {term = 3, prevLogTerm = 2, prevLogIndex = 2, entries = [(3, 3)], leaderCommit = 7}
             let ((toNode, AppendLogRPCReply 3 True), Follower, dat') = appendLog Follower rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
             commitIndex dat' `shouldBe` 3
+            toNode `shouldBe` fromNode
 
             let ((toNode, AppendLogRPCReply 3 True), state', dat') = appendLog Candidate rpc fromNode dat
             Raft.Types.log dat' `shouldBe` [(1,1), (2,2), (3,3)]
             state' `shouldBe` Follower
             commitIndex dat' `shouldBe` 3
+            toNode `shouldBe` fromNode
 
     describe "vote" $ do
         let defaultRpc = RequestVoteRPC 0 0 0 0
             fromNode = 0
-            toNode = 0
 
         it "rejects lower term" $ do
             let dat = defaultData {currentTerm = 2}
@@ -104,16 +117,19 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Follower
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, RequestVoteRPCReply 2 granted'), state', dat') = vote Candidate rpc fromNode dat
             granted' `shouldBe` False
             state' `shouldBe` Candidate
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, RequestVoteRPCReply 2 granted'), state', dat') = vote Leader rpc fromNode dat
             granted' `shouldBe` False
             state' `shouldBe` Leader
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
         it "rejects if already voted in this term" $ do
             let dat = defaultData {currentTerm = 2, votedFor = Just 1}
@@ -123,11 +139,13 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Follower
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, RequestVoteRPCReply 2 granted'), state', dat') = vote Candidate rpc fromNode dat
             granted' `shouldBe` False
             state' `shouldBe` Candidate
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
         it "grants if already voted for this candidate in this term" $ do
             let dat = defaultData {currentTerm = 2, votedFor = Just 1}
@@ -137,11 +155,13 @@ spec = do
             granted' `shouldBe` True
             state' `shouldBe` Follower
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let ((toNode, RequestVoteRPCReply 2 granted'), state', dat') = vote Candidate rpc fromNode dat
             granted' `shouldBe` True
             state' `shouldBe` Candidate
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
         it "grants if haven't voted yet and candidate's log is up-to-date" $ do
             let dat = defaultData { currentTerm = 2, votedFor = Nothing
@@ -153,6 +173,7 @@ spec = do
             granted' `shouldBe` True
             state' `shouldBe` Follower
             dat' `shouldBe` dat { votedFor = Just 1 }
+            toNode `shouldBe` fromNode
 
             -- NOTE: Candidate will always have voted (for itself) in current term
 
@@ -160,6 +181,7 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Leader
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let rpc = defaultRpc { term = 2, candidateId = 1, lastLogTerm = 3
                                  , lastLogIndex = 2} :: RequestVoteRPC
@@ -168,6 +190,7 @@ spec = do
             granted' `shouldBe` True
             state' `shouldBe` Follower
             dat' `shouldBe` dat { votedFor = Just 1 }
+            toNode `shouldBe` fromNode
 
             -- NOTE: Candidate will always have voted (for itself) in current term
 
@@ -175,6 +198,7 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Leader
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
         it "rejects if haven't voted yet but candidate's log is not up-to-date" $ do
             let dat = defaultData { currentTerm = 2, votedFor = Nothing
@@ -186,6 +210,7 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Follower
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             -- NOTE: Candidate will always have voted (for itself) in current term
 
@@ -193,6 +218,7 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Leader
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             let rpc = defaultRpc { term = 2, candidateId = 1, lastLogTerm = 2
                                  , lastLogIndex = 1} :: RequestVoteRPC
@@ -201,6 +227,7 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Follower
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
 
             -- NOTE: Candidate will always have voted (for itself) in current term
 
@@ -208,3 +235,4 @@ spec = do
             granted' `shouldBe` False
             state' `shouldBe` Leader
             dat' `shouldBe` dat
+            toNode `shouldBe` fromNode
